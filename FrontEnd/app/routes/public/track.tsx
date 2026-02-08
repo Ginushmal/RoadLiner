@@ -3,31 +3,78 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { prisma } from "~/db.server";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { Html5Qrcode } from "html5-qrcode";
+import { ClientOnly } from "remix-utils/client-only";
+
+const LiveMap = lazy(() => import("~/components/map/LiveMap"));
 
 export async function loader({ params }: LoaderFunctionArgs) {
-  const parcel = await prisma.parcel.findUnique({
-    where: { trackingId: params.trackingId },
-    include: { originStation: true, destinationStation: true }
-  });
+  const [parcel, stations] = await Promise.all([
+    prisma.parcel.findUnique({
+      where: { trackingId: params.trackingId },
+      include: { originStation: true, destinationStation: true }
+    }),
+    prisma.station.findMany()
+  ]);
 
   if (!parcel) throw new Response("Not Found", { status: 404 });
-  return { parcel };
+  
+  // Prepare map points
+  const points = [];
+  if (parcel.originStation) {
+      points.push({ lat: parcel.originStation.latitude, lng: parcel.originStation.longitude, name: parcel.originStation.name, type: "STATION" as const });
+  } else if (parcel.pickupLat && parcel.pickupLng) {
+      points.push({ lat: parcel.pickupLat, lng: parcel.pickupLng, name: "Pickup Location", type: "HOME" as const });
+  }
+
+  if (parcel.destinationStation) {
+      points.push({ lat: parcel.destinationStation.latitude, lng: parcel.destinationStation.longitude, name: parcel.destinationStation.name, type: "STATION" as const });
+  } else if (parcel.dropoffLat && parcel.dropoffLng) {
+      points.push({ lat: parcel.dropoffLat, lng: parcel.dropoffLng, name: "Drop-off Location", type: "HOME" as const });
+  }
+
+  return { parcel, points, stations };
+}
+
+// Haversine distance utility
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const formData = await request.formData();
   const intent = formData.get("intent");
   const scannedCode = formData.get("scannedCode") as string;
+  const lat = parseFloat(formData.get("lat") as string);
+  const lng = parseFloat(formData.get("lng") as string);
 
   if (intent === "verify_receipt") {
       const parcel = await prisma.parcel.findUnique({
-          where: { trackingId: params.trackingId }
+          where: { trackingId: params.trackingId },
+          include: { destinationStation: true }
       });
       
       if (!parcel) return { error: "Parcel not found" };
+
+      // 1. Verify Proximity
+      const targetLat = parcel.status === "READY_FOR_PICKUP" ? parcel.destinationStation?.latitude : parcel.dropoffLat;
+      const targetLng = parcel.status === "READY_FOR_PICKUP" ? parcel.destinationStation?.longitude : parcel.dropoffLng;
+
+      if (targetLat && targetLng && !isNaN(lat) && !isNaN(lng)) {
+          const dist = getDistance(lat, lng, targetLat, targetLng);
+          if (dist > 0.5) { // 500m
+              return { error: `Too far! You must be at the handover point to confirm. (You are ${dist.toFixed(2)}km away)` };
+          }
+      } else if (targetLat && targetLng && (isNaN(lat) || isNaN(lng))) {
+          return { error: "Location data required to confirm receipt." };
+      }
       
+      // 2. Verify Code
       if (scannedCode === parcel.trackingId) {
           await prisma.parcel.update({
               where: { id: parcel.id },
@@ -42,15 +89,50 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 export default function TrackParcel() {
-  const { parcel } = useLoaderData<typeof loader>();
+  const { parcel, points, stations } = useLoaderData<typeof loader>();
+  const actionData = useActionData<{ error?: string, success?: boolean }>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const [showScanner, setShowScanner] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   
   const formRef = useRef<HTMLFormElement>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
+  const latRef = useRef<HTMLInputElement>(null);
+  const lngRef = useRef<HTMLInputElement>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+
+  const captureLocationAndSubmit = (code: string) => {
+      setLocalError(null);
+      
+      const submitWithLocation = (lat: number, lng: number) => {
+          if (codeInputRef.current && latRef.current && lngRef.current && formRef.current) {
+              codeInputRef.current.value = code;
+              latRef.current.value = lat.toString();
+              lngRef.current.value = lng.toString();
+              formRef.current.requestSubmit();
+          }
+      };
+
+      // Check for mock location first
+      const mockLoc = localStorage.getItem("dev_location");
+      if (mockLoc) {
+          const { lat, lng } = JSON.parse(mockLoc);
+          submitWithLocation(lat, lng);
+          return;
+      }
+
+      if (!navigator.geolocation) {
+          setLocalError("Geolocation not supported. Cannot verify proximity.");
+          return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+          (pos) => submitWithLocation(pos.coords.latitude, pos.coords.longitude),
+          (err) => setLocalError("Location access denied. Please enable GPS to confirm receipt."),
+          { enableHighAccuracy: true }
+      );
+  };
 
   useEffect(() => {
     if (showScanner && parcel.status !== "DELIVERED") {
@@ -63,23 +145,16 @@ export default function TrackParcel() {
                     { facingMode: "environment" },
                     { fps: 10, qrbox: { width: 250, height: 250 } },
                     (decodedText) => {
-                        // Success
                         scanner.stop().then(() => {
                              scannerRef.current = null;
                              setShowScanner(false);
-                             if (codeInputRef.current && formRef.current) {
-                                 codeInputRef.current.value = decodedText;
-                                 formRef.current.requestSubmit();
-                             }
+                             captureLocationAndSubmit(decodedText);
                         });
                     },
-                    (errorMessage) => {
-                        // Ignore frame errors
-                    }
+                    (errorMessage) => {}
                 );
             } catch (err) {
-                console.error("Error starting scanner", err);
-                setScanError("Could not access camera. Please ensure permissions are granted.");
+                setLocalError("Could not access camera. Please ensure permissions are granted.");
                 setShowScanner(false);
             }
         };
@@ -111,6 +186,16 @@ export default function TrackParcel() {
                      parcel.status === "READY_FOR_PICKUP" ||
                      (parcel.status === "IN_TRANSIT" && parcel.dropoffMethod === "ON_ROUTE");
 
+  // Mock "live" location of van if in transit
+  const currentPosition = parcel.status === "IN_TRANSIT" && points.length >= 2 
+    ? { 
+        lat: (points[0].lat + points[1].lat) / 2, 
+        lng: (points[0].lng + points[1].lng) / 2, 
+        name: "RoadLiner Van", 
+        type: "VAN" as const 
+      } 
+    : undefined;
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-2xl mx-auto space-y-8">
@@ -124,6 +209,21 @@ export default function TrackParcel() {
                 </div>
             </div>
         </div>
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Live Status Map</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <ClientOnly fallback={<div className="h-[400px] w-full bg-gray-100 animate-pulse rounded-md flex items-center justify-center">Loading Map...</div>}>
+                    {() => (
+                        <Suspense fallback={<div className="h-[400px] w-full bg-gray-100 animate-pulse rounded-md" />}>
+                            <LiveMap points={points} currentPosition={currentPosition} stations={stations} />
+                        </Suspense>
+                    )}
+                </ClientOnly>
+            </CardContent>
+        </Card>
 
         <Card>
             <CardHeader>
@@ -180,26 +280,39 @@ export default function TrackParcel() {
                          </Button>
                     )}
 
-                    {/* Hidden form to submit the scanned code */}
+                    {/* Hidden form to submit the scanned code + location */}
                     <Form method="post" ref={formRef} className="hidden">
                         <input type="hidden" name="intent" value="verify_receipt" />
                         <input type="hidden" name="scannedCode" ref={codeInputRef} />
+                        <input type="hidden" name="lat" ref={latRef} />
+                        <input type="hidden" name="lng" ref={lngRef} />
                     </Form>
 
-                    {scanError && (
+                    {(localError || actionData?.error) && (
                         <div className="bg-red-100 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
                             <strong className="font-bold">Error: </strong>
-                            <span className="block sm:inline">{scanError}</span>
+                            <span className="block sm:inline">{localError || actionData?.error}</span>
                         </div>
                     )}
                     
                     {/* Fallback for testing without camera */}
                     <div className="pt-4 border-t border-green-200">
                         <p className="text-xs text-gray-500 mb-2">Camera issues? Enter manually:</p>
-                        <Form method="post" className="flex flex-col sm:flex-row gap-2">
-                             <Input name="scannedCode" placeholder="Enter Tracking ID manually" required className="bg-white" />
-                             <Button name="intent" value="verify_receipt" size="sm" variant="secondary" className="w-full sm:w-auto">Verify ID</Button>
-                        </Form>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                             <Input id="manualCode" placeholder="Enter Tracking ID manually" className="bg-white" />
+                             <Button 
+                                onClick={() => {
+                                    const input = document.getElementById('manualCode') as HTMLInputElement;
+                                    if (input.value) captureLocationAndSubmit(input.value);
+                                }}
+                                size="sm" 
+                                variant="secondary" 
+                                className="w-full sm:w-auto"
+                                disabled={isSubmitting}
+                             >
+                                 {isSubmitting ? "Verifying..." : "Verify ID"}
+                             </Button>
+                        </div>
                     </div>
                 </CardContent>
             </Card>

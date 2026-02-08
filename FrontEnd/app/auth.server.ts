@@ -51,6 +51,7 @@ export async function login(request: Request, userId: string) {
   let redirectTo = "/dashboard";
   if (user?.role === "CROWD_DRIVER") redirectTo = "/driver";
   if (user?.role === "VAN_DRIVER") redirectTo = "/van";
+  if (user?.role === "ADMIN") redirectTo = "/admin";
 
   return redirect(redirectTo, {
     headers: {

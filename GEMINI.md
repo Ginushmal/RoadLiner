@@ -21,25 +21,73 @@ This project is built using the following modern web technologies. All developme
 
 - **Styling**: [Tailwind CSS v4](https://tailwindcss.com/).
 - **Bundler**: [Vite](https://vitejs.dev/).
+- **Maps**: [Leaflet](https://leafletjs.com/) via `react-leaflet`.
+- **QR Scanning**: `html5-qrcode`.
 
 ### Database & Backend
 
 - **Database**: PostgreSQL.
 - **ORM**: [Prisma](https://www.prisma.io/) (v7).
   - **Migrations**: Managed via Prisma Migrate (`bun x prisma migrate dev`).
-  - **Client**: Generated Prisma Client (Output: `app/generated/prisma`).
+  - **Client**: Generated Prisma Client (Output: `node_modules/@prisma/client`).
 - **Docker**: Used for local development (Postgres + App).
 
 ### Directory Structure
 
 - `FrontEnd/`: Contains the React Router 7 application.
-  - `app/generated/prisma`: Contains the generated Prisma client code.
+  - `app/components/ui/`: Reusable UI components (Button, Input, Card).
+  - `app/components/map/`: Leaflet map components (`LiveMap`, `MapPicker`).
+  - `app/routes/`: Route definitions (Dashboard, Admin, Auth).
   - `prisma/`: Contains schema and configuration.
 - `compose.yaml`: Docker Compose configuration for the full stack.
 
 ---
 
-## 🚀 Getting Started
+## 🏗️ Development Guidelines & Best Practices
+
+**All future implementations MUST strictly follow these rules:**
+
+### 1. Code Style & Architecture
+*   **Imports**: NEVER import server-side modules (like `db.server.ts` or Prisma types directly from the generated folder) into client-side components.
+    *   Use `import type { UserRole } from "@prisma/client"` for types.
+    *   Keep database logic strictly within `loader` and `action` functions.
+*   **Maps & Leaflet**: Leaflet requires the `window` object. Always wrap map components in `ClientOnly` (from `remix-utils/client-only`) and `Suspense` to prevent Server-Side Rendering (SSR) crashes.
+    *   Example:
+        ```tsx
+        <ClientOnly fallback={<Fallback />}>
+          {() => <Suspense fallback={<Fallback />}><MapComponent /></Suspense>}
+        </ClientOnly>
+        ```
+*   **UI Components**: Use the pre-built components in `app/components/ui` (`Button`, `Card`, `Input`, `ProximityButton`) to maintain visual consistency.
+*   **Mobile-First**: Ensure all buttons and inputs have appropriate touch targets (min 44px height) and that layouts stack vertically on small screens.
+
+### 2. Mandatory Workflow: Verify & Fix
+To ensure the system remains stable, you **MUST** follow this sequence after **EVERY** code modification request:
+
+1.  **Implement**: Write the code changes.
+2.  **Build & Deploy**: Run the Docker command to rebuild the container.
+    ```powershell
+    docker compose up -d --build
+    ```
+3.  **Check Logs**: Inspect the logs for build errors or runtime crashes immediately after the container starts.
+    ```powershell
+    docker logs roadliner-frontend-1 --tail 50
+    ```
+4.  **Fix Errors**: If the build fails or the server crashes (e.g., "Prisma Client not found", "window is not defined"), you must **fix it immediately** before marking the task as complete. Do not wait for the user to report it.
+
+### 3. Admin & Security
+*   **Admin Access**: The Admin Panel (`/admin`) is restricted. Do not allow public registration for the `ADMIN` role.
+*   **Credentials**: The seeded admin account is `admin@gmail.com` / `admin`.
+*   **Route Management**: Routes are defined by Admin users via the drag-and-drop interface.
+
+### 4. Proximity & Verification
+*   **Location**: The system uses GPS to verify physical presence.
+*   **DEV GPS**: For testing, use the floating "DEV GPS" panel (bottom-right) to mock your location.
+*   **Threshold**: Actions like "Confirm Pickup" or "Unload" are blocked if the user is >500m away from the target.
+
+---
+
+## 🚀 Getting Started (Legacy)
 
 Follow these steps to set up the project locally.
 
