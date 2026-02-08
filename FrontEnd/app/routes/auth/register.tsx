@@ -13,7 +13,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const name = formData.get("name") as string;
   const role = formData.get("role") as UserRole;
 
-  const validRoles = ["SENDER_RECEIVER", "CROWD_DRIVER", "VAN_DRIVER", "ADMIN"];
+  const validRoles = ["SENDER_RECEIVER", "CROWD_DRIVER", "VAN_DRIVER"]; // Admin is private
   if (!validRoles.includes(role)) {
       return { error: "Invalid role" };
   }

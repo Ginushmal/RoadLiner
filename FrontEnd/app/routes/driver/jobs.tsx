@@ -3,36 +3,35 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { requireRole } from "~/auth.server";
 import { prisma } from "~/db.server";
+import { lazy, Suspense } from "react";
+import { ClientOnly } from "remix-utils/client-only";
+
+const LiveMap = lazy(() => import("~/components/map/LiveMap"));
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireRole(request, ["CROWD_DRIVER", "ADMIN"]);
   
-  // Available Pickups (First Mile)
-  const availablePickups = await prisma.parcel.findMany({
-    where: {
-        pickupMethod: "HOME",
-        status: "ACCEPTED", // Paid
-        // Ensure no active driver job exists for first mile
-        driverJobs: {
-            none: { type: "FIRST_MILE", status: { not: "CANCELLED" } }
-        }
-    },
-    include: { originStation: true }
-  });
+  const [availablePickups, availableDeliveries, stations] = await Promise.all([
+    prisma.parcel.findMany({
+        where: {
+            pickupMethod: "HOME",
+            status: "ACCEPTED",
+            driverJobs: { none: { type: "FIRST_MILE", status: { not: "CANCELLED" } } }
+        },
+        include: { originStation: true }
+    }),
+    prisma.parcel.findMany({
+        where: {
+            dropoffMethod: "HOME",
+            status: "AT_STATION_DEST",
+            driverJobs: { none: { type: "LAST_MILE", status: { not: "CANCELLED" } } }
+        },
+        include: { destinationStation: true }
+    }),
+    prisma.station.findMany()
+  ]);
 
-  // Available Deliveries (Last Mile)
-  const availableDeliveries = await prisma.parcel.findMany({
-    where: {
-        dropoffMethod: "HOME",
-        status: "AT_STATION_DEST",
-         driverJobs: {
-            none: { type: "LAST_MILE", status: { not: "CANCELLED" } }
-        }
-    },
-    include: { destinationStation: true }
-  });
-
-  return { availablePickups, availableDeliveries };
+  return { availablePickups, availableDeliveries, stations };
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -73,9 +72,24 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function DriverJobs() {
-  const { availablePickups, availableDeliveries } = useLoaderData<typeof loader>();
+  const { availablePickups, availableDeliveries, stations } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
+
+  const points = [
+      ...availablePickups.map(p => ({
+          lat: p.pickupLat || 0,
+          lng: p.pickupLng || 0,
+          name: `Pickup: ${p.trackingId}`,
+          type: "HOME" as const
+      })),
+      ...availableDeliveries.map(p => ({
+          lat: p.dropoffLat || 0,
+          lng: p.dropoffLng || 0,
+          name: `Delivery: ${p.trackingId}`,
+          type: "HOME" as const
+      }))
+  ];
 
   return (
     <div className="space-y-8">
@@ -83,6 +97,19 @@ export default function DriverJobs() {
         <h1 className="text-3xl font-bold">Job Board</h1>
         <p className="text-gray-500">Accept new gigs near you.</p>
       </div>
+
+      <Card>
+          <CardHeader><CardTitle>Jobs Map</CardTitle></CardHeader>
+          <CardContent>
+              <ClientOnly fallback={<div className="h-[400px] w-full bg-gray-100 animate-pulse rounded-md flex items-center justify-center text-gray-400">Loading Map...</div>}>
+                  {() => (
+                      <Suspense fallback={<div className="h-[400px] w-full bg-gray-100 animate-pulse rounded-md" />}>
+                          <LiveMap points={points} stations={stations} />
+                      </Suspense>
+                  )}
+              </ClientOnly>
+          </CardContent>
+      </Card>
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Pickups */}

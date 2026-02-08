@@ -6,9 +6,14 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
+import { lazy, Suspense } from "react";
+import { ClientOnly } from "remix-utils/client-only";
+import { prisma } from "~/db.server";
 
 import type { Route } from "./+types/root";
 import "./app.css";
+
+const DevLocationPanel = lazy(() => import("./components/ui/dev-location-panel"));
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -23,7 +28,21 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
+export async function loader() {
+  const stations = await prisma.station.findMany({
+    select: { id: true, name: true, latitude: true, longitude: true }
+  });
+  return { stations };
+}
+
+import { useLoaderData } from "react-router";
+
+// ... existing imports ...
+
 export function Layout({ children }: { children: React.ReactNode }) {
+  const data = useLoaderData<typeof loader>();
+  const stations = data?.stations || [];
+
   return (
     <html lang="en">
       <head>
@@ -34,6 +53,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
+        <ClientOnly fallback={null}>
+            {() => (
+                <Suspense fallback={null}>
+                    <DevLocationPanel stations={stations} />
+                </Suspense>
+            )}
+        </ClientOnly>
         <ScrollRestoration />
         <Scripts />
       </body>
