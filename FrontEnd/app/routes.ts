@@ -21,6 +21,13 @@ export default [
     route("van", "routes/van/dashboard.tsx"),
   ]),
 
+  layout("routes/layouts/admin-layout.tsx", [
+    route("admin", "routes/admin/dashboard.tsx"),
+    route("admin/stations/new", "routes/admin/stations/new.tsx"),
+    route("admin/routes/new", "routes/admin/routes/new.tsx"),
+    route("admin/routes/:id/edit", "routes/admin/routes/edit.tsx"),
+  ]),
+
   route("track/:trackingId", "routes/public/track.tsx"),
   
 ] satisfies RouteConfig;

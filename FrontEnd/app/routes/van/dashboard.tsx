@@ -1,28 +1,36 @@
-import { type LoaderFunctionArgs, type ActionFunctionArgs, useLoaderData, Form, useNavigation } from "react-router";
+import { type LoaderFunctionArgs, type ActionFunctionArgs, useLoaderData, Form, useNavigation, useSubmit } from "react-router";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { requireRole } from "~/auth.server";
 import { prisma } from "~/db.server";
+import { ProximityButton } from "~/components/ui/proximity-button";
+import { lazy, Suspense } from "react";
+import { ClientOnly } from "remix-utils/client-only";
+
+const LiveMap = lazy(() => import("~/components/map/LiveMap"));
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireRole(request, ["VAN_DRIVER", "ADMIN"]);
   
-  const activeRoute = await prisma.route.findFirst({
-      where: { vanDriverId: user.id },
-      include: { 
-          stops: {
-              orderBy: { sequenceOrder: 'asc' },
-              include: { station: true }
-          }
-      }
-  });
+  const [activeRoute, stations] = await Promise.all([
+    prisma.route.findFirst({
+        where: { vanDriverId: user.id },
+        include: { 
+            stops: {
+                orderBy: { sequenceOrder: 'asc' },
+                include: { station: true }
+            }
+        }
+    }),
+    prisma.station.findMany()
+  ]);
 
   if (!activeRoute) {
       const availableRoutes = await prisma.route.findMany({
           where: { vanDriverId: null },
           include: { stops: { include: { station: true } } }
       });
-      return { activeRoute: null, availableRoutes };
+      return { activeRoute: null, availableRoutes, stations };
   }
 
   const stationIds = activeRoute.stops.map(s => s.stationId).filter(Boolean) as string[];
@@ -51,7 +59,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       where: { dropoffMethod: "ON_ROUTE", status: "IN_TRANSIT" }
   });
 
-  return { activeRoute, toLoad, onVan, onRoutePickups, onRouteDropoffs };
+  return { activeRoute, toLoad, onVan, onRoutePickups, onRouteDropoffs, stations };
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -78,8 +86,6 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (intent === "unload") {
       const parcel = await prisma.parcel.findUnique({ where: { id: parcelId } });
-      // If it's a Home Delivery, it needs a Crowd Driver (AT_STATION_DEST)
-      // If it's a Station Pickup, it's ready for Receiver (READY_FOR_PICKUP)
       const nextStatus = parcel?.dropoffMethod === "HOME" ? "AT_STATION_DEST" : "READY_FOR_PICKUP";
       
       await prisma.parcel.update({
@@ -102,6 +108,7 @@ export async function action({ request }: ActionFunctionArgs) {
 export default function VanDashboard() {
   const data = useLoaderData<typeof loader>();
   const navigation = useNavigation();
+  const submit = useSubmit();
   const isSubmitting = navigation.state === "submitting";
 
   if (!data.activeRoute) {
@@ -133,7 +140,14 @@ export default function VanDashboard() {
       );
   }
 
-  const { activeRoute, toLoad, onVan, onRoutePickups, onRouteDropoffs } = data;
+  const { activeRoute, toLoad, onVan, onRoutePickups, onRouteDropoffs, stations } = data;
+
+  const points = activeRoute.stops.map(s => ({
+      lat: s.station?.latitude || 0,
+      lng: s.station?.longitude || 0,
+      name: s.station?.name || "Unknown",
+      type: "STATION" as const
+  }));
 
   return (
     <div className="space-y-6">
@@ -147,6 +161,19 @@ export default function VanDashboard() {
             <Button name="intent" value="end_route" variant="outline" size="sm">End Shift</Button>
          </Form>
       </div>
+
+      <Card>
+          <CardHeader><CardTitle>Route Map</CardTitle></CardHeader>
+          <CardContent>
+              <ClientOnly fallback={<div className="h-[400px] w-full bg-gray-100 animate-pulse rounded-md flex items-center justify-center">Loading Map...</div>}>
+                  {() => (
+                      <Suspense fallback={<div className="h-[400px] w-full bg-gray-100 animate-pulse rounded-md" />}>
+                          <LiveMap points={points} stations={stations} />
+                      </Suspense>
+                  )}
+              </ClientOnly>
+          </CardContent>
+      </Card>
 
       <div className="space-y-4">
           {activeRoute.stops.map((stop) => {
@@ -169,12 +196,23 @@ export default function VanDashboard() {
                                   {parcelsAtStation.length === 0 ? <p className="text-xs text-gray-400">No parcels here.</p> : (
                                       <div className="space-y-2">
                                           {parcelsAtStation.map(p => (
-                                              <div key={p.id} className="flex justify-between items-center text-sm bg-white p-2 rounded shadow-sm">
-                                                  <span>{p.trackingId} &rarr; {p.destinationStation?.city}</span>
-                                                  <Form method="post">
-                                                      <input type="hidden" name="parcelId" value={p.id} />
-                                                      <Button name="intent" value="load" size="sm" variant="outline">Load</Button>
-                                                  </Form>
+                                              <div key={p.id} className="flex justify-between items-center text-sm bg-white p-2 rounded shadow-sm gap-2">
+                                                  <span className="break-all">{p.trackingId} &rarr; {p.destinationStation?.city}</span>
+                                                  <ProximityButton
+                                                      targetLat={stop.station?.latitude || null}
+                                                      targetLng={stop.station?.longitude || null}
+                                                      size="sm"
+                                                      variant="outline"
+                                                      onVerified={() => {
+                                                          const formData = new FormData();
+                                                          formData.append("intent", "load");
+                                                          formData.append("parcelId", p.id);
+                                                          submit(formData, { method: "post" });
+                                                      }}
+                                                      disabled={isSubmitting}
+                                                  >
+                                                      Load
+                                                  </ProximityButton>
                                               </div>
                                           ))}
                                       </div>
@@ -186,12 +224,22 @@ export default function VanDashboard() {
                                   {parcelsToUnload.length === 0 ? <p className="text-xs text-gray-400">None for this stop.</p> : (
                                       <div className="space-y-2">
                                           {parcelsToUnload.map(p => (
-                                              <div key={p.id} className="flex justify-between items-center text-sm bg-white p-2 rounded shadow-sm">
-                                                  <span>{p.trackingId}</span>
-                                                  <Form method="post">
-                                                      <input type="hidden" name="parcelId" value={p.id} />
-                                                      <Button name="intent" value="unload" size="sm">Unload</Button>
-                                                  </Form>
+                                              <div key={p.id} className="flex justify-between items-center text-sm bg-white p-2 rounded shadow-sm gap-2">
+                                                  <span className="break-all">{p.trackingId}</span>
+                                                  <ProximityButton
+                                                      targetLat={stop.station?.latitude || null}
+                                                      targetLng={stop.station?.longitude || null}
+                                                      size="sm"
+                                                      onVerified={() => {
+                                                          const formData = new FormData();
+                                                          formData.append("intent", "unload");
+                                                          formData.append("parcelId", p.id);
+                                                          submit(formData, { method: "post" });
+                                                      }}
+                                                      disabled={isSubmitting}
+                                                  >
+                                                      Unload
+                                                  </ProximityButton>
                                               </div>
                                           ))}
                                       </div>
@@ -212,22 +260,56 @@ export default function VanDashboard() {
                   <div>
                       <h4 className="text-xs font-bold uppercase text-yellow-600 mb-2">Pickups</h4>
                       {onRoutePickups.map(p => (
-                          <div key={p.id} className="flex justify-between items-center bg-white p-2 rounded mb-2 shadow-sm text-sm">
-                              <span>{p.trackingId} at {p.pickupAddress}</span>
-                              <Form method="post">
-                                  <input type="hidden" name="parcelId" value={p.id} /><Button name="intent" value="pickup_on_route" size="sm" variant="outline">Done</Button>
-                              </Form>
+                          <div key={p.id} className="flex flex-col gap-2 bg-white p-3 rounded mb-2 shadow-sm text-sm">
+                              <div className="flex justify-between items-start">
+                                  <div>
+                                      <span className="font-bold">{p.trackingId}</span>
+                                      <p className="text-xs text-gray-500">{p.pickupAddress}</p>
+                                  </div>
+                                  <ProximityButton
+                                      targetLat={p.pickupLat}
+                                      targetLng={p.pickupLng}
+                                      size="sm"
+                                      variant="outline"
+                                      onVerified={() => {
+                                          const formData = new FormData();
+                                          formData.append("intent", "pickup_on_route");
+                                          formData.append("parcelId", p.id);
+                                          submit(formData, { method: "post" });
+                                      }}
+                                      disabled={isSubmitting}
+                                  >
+                                      Done
+                                  </ProximityButton>
+                              </div>
                           </div>
                       ))}
                   </div>
                   <div>
                       <h4 className="text-xs font-bold uppercase text-green-600 mb-2">Drop-offs</h4>
                       {onRouteDropoffs.map(p => (
-                          <div key={p.id} className="flex justify-between items-center bg-white p-2 rounded mb-2 shadow-sm text-sm">
-                              <span>{p.trackingId} at {p.dropoffAddress}</span>
-                              <Form method="post">
-                                  <input type="hidden" name="parcelId" value={p.id} /><Button name="intent" value="dropoff_on_route" size="sm" variant="outline">Done</Button>
-                              </Form>
+                          <div key={p.id} className="flex flex-col gap-2 bg-white p-3 rounded mb-2 shadow-sm text-sm">
+                              <div className="flex justify-between items-start">
+                                  <div>
+                                      <span className="font-bold">{p.trackingId}</span>
+                                      <p className="text-xs text-gray-500">{p.dropoffAddress}</p>
+                                  </div>
+                                  <ProximityButton
+                                      targetLat={p.dropoffLat}
+                                      targetLng={p.dropoffLng}
+                                      size="sm"
+                                      variant="outline"
+                                      onVerified={() => {
+                                          const formData = new FormData();
+                                          formData.append("intent", "dropoff_on_route");
+                                          formData.append("parcelId", p.id);
+                                          submit(formData, { method: "post" });
+                                      }}
+                                      disabled={isSubmitting}
+                                  >
+                                      Done
+                                  </ProximityButton>
+                              </div>
                           </div>
                       ))}
                   </div>

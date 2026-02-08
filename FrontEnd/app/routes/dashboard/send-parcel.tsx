@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, Form, useLoaderData, useNavigation, useActionData, redirect } from "react-router";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -6,11 +6,29 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { requireUser } from "~/auth.server";
 import { prisma } from "~/db.server";
 import type { ParcelSize, DeliveryMethod } from "@prisma/client";
+import { ClientOnly } from "remix-utils/client-only";
+
+const MapPicker = lazy(() => import("~/components/map/MapPicker"));
 
 export async function loader({ request }: LoaderFunctionArgs) {
   await requireUser(request);
   const stations = await prisma.station.findMany();
   return { stations };
+}
+
+// Haversine formula to find nearest station
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    ; 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+  const d = R * c; // Distance in km
+  return d;
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -22,15 +40,50 @@ export async function action({ request }: ActionFunctionArgs) {
   const description = formData.get("description") as string;
   
   const pickupMethod = formData.get("pickupMethod") as DeliveryMethod;
-  const originStationId = formData.get("originStationId") as string;
+  let originStationId = formData.get("originStationId") as string;
   const pickupAddress = formData.get("pickupAddress") as string;
+  const pickupLat = parseFloat(formData.get("pickupLat") as string);
+  const pickupLng = parseFloat(formData.get("pickupLng") as string);
 
   const dropoffMethod = formData.get("dropoffMethod") as DeliveryMethod;
-  const destinationStationId = formData.get("destinationStationId") as string;
+  let destinationStationId = formData.get("destinationStationId") as string;
   const dropoffAddress = formData.get("dropoffAddress") as string;
+  const dropoffLat = parseFloat(formData.get("dropoffLat") as string);
+  const dropoffLng = parseFloat(formData.get("dropoffLng") as string);
   
   const receiverEmail = formData.get("receiverEmail") as string;
   const receiverName = formData.get("receiverName") as string;
+
+  // Auto-assign nearest station if Home/On-Route
+  const stations = await prisma.station.findMany();
+  
+  if (pickupMethod !== "STATION" && !originStationId && !isNaN(pickupLat)) {
+      // Find nearest station to pickup location
+      let minDst = Infinity;
+      let nearest = null;
+      for (const s of stations) {
+          const dist = getDistance(pickupLat, pickupLng, s.latitude, s.longitude);
+          if (dist < minDst) {
+              minDst = dist;
+              nearest = s;
+          }
+      }
+      if (nearest) originStationId = nearest.id;
+  }
+
+  if (dropoffMethod !== "STATION" && !destinationStationId && !isNaN(dropoffLat)) {
+       // Find nearest station to dropoff location
+      let minDst = Infinity;
+      let nearest = null;
+      for (const s of stations) {
+          const dist = getDistance(dropoffLat, dropoffLng, s.latitude, s.longitude);
+          if (dist < minDst) {
+              minDst = dist;
+              nearest = s;
+          }
+      }
+      if (nearest) destinationStationId = nearest.id;
+  }
 
   // Calculate Price (Mock)
   let price = 200; // Base
@@ -38,14 +91,11 @@ export async function action({ request }: ActionFunctionArgs) {
   if (size === "LARGE") price += 200;
   price += weight * 50;
   
-  // Add distance logic here if we had coordinates from address
-  // For now, flat rate for delivery type
   if (pickupMethod === "HOME") price += 300;
   if (dropoffMethod === "HOME") price += 300;
   if (pickupMethod === "ON_ROUTE") price += 150;
   
   // Create Parcel
-  // Check if receiver exists
   let receiverId = null;
   if (receiverEmail) {
       const receiver = await prisma.user.findUnique({ where: { email: receiverEmail } });
@@ -68,10 +118,14 @@ export async function action({ request }: ActionFunctionArgs) {
         pickupMethod,
         originStationId: originStationId || null,
         pickupAddress: pickupAddress || null,
+        pickupLat: isNaN(pickupLat) ? null : pickupLat,
+        pickupLng: isNaN(pickupLng) ? null : pickupLng,
         
         dropoffMethod,
         destinationStationId: destinationStationId || null,
         dropoffAddress: dropoffAddress || null,
+        dropoffLat: isNaN(dropoffLat) ? null : dropoffLat,
+        dropoffLng: isNaN(dropoffLng) ? null : dropoffLng,
         
         price,
         status: "PENDING"
@@ -88,6 +142,8 @@ export default function SendParcel() {
 
   const [pickupMethod, setPickupMethod] = useState<DeliveryMethod>("STATION");
   const [dropoffMethod, setDropoffMethod] = useState<DeliveryMethod>("STATION");
+  const [pickupCoords, setPickupCoords] = useState<{lat: number, lng: number} | null>(null);
+  const [dropoffCoords, setDropoffCoords] = useState<{lat: number, lng: number} | null>(null);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -153,8 +209,22 @@ export default function SendParcel() {
                 
                 {(pickupMethod === "HOME" || pickupMethod === "ON_ROUTE") && (
                     <div className="space-y-2">
-                         <label className="text-sm font-medium">Address / Location</label>
-                         <Input name="pickupAddress" placeholder="123 Main St, Colombo" required />
+                         <label className="text-sm font-medium">Pin Location on Map</label>
+                         <ClientOnly fallback={<div className="h-[300px] w-full bg-gray-100 animate-pulse rounded-md flex items-center justify-center text-gray-400">Loading Map...</div>}>
+                            {() => (
+                                <Suspense fallback={<div className="h-[300px] w-full bg-gray-100 animate-pulse rounded-md" />}>
+                                    <MapPicker 
+                                        stations={stations}
+                                        onLocationSelect={(lat, lng) => setPickupCoords({lat, lng})} 
+                                    />
+                                </Suspense>
+                            )}
+                         </ClientOnly>
+                         <input type="hidden" name="pickupLat" value={pickupCoords?.lat || ""} />
+                         <input type="hidden" name="pickupLng" value={pickupCoords?.lng || ""} />
+                         
+                         <label className="text-sm font-medium mt-2 block">Address Details</label>
+                         <Input name="pickupAddress" placeholder="Building No, Street Name (for driver reference)" required />
                     </div>
                 )}
             </CardContent>
@@ -190,8 +260,22 @@ export default function SendParcel() {
 
                  {(dropoffMethod === "HOME" || dropoffMethod === "ON_ROUTE") && (
                     <div className="space-y-2">
-                         <label className="text-sm font-medium">Address / Location</label>
-                         <Input name="dropoffAddress" placeholder="456 Beach Rd, Galle" required />
+                         <label className="text-sm font-medium">Pin Location on Map</label>
+                         <ClientOnly fallback={<div className="h-[300px] w-full bg-gray-100 animate-pulse rounded-md flex items-center justify-center text-gray-400">Loading Map...</div>}>
+                            {() => (
+                                <Suspense fallback={<div className="h-[300px] w-full bg-gray-100 animate-pulse rounded-md" />}>
+                                    <MapPicker 
+                                        stations={stations}
+                                        onLocationSelect={(lat, lng) => setDropoffCoords({lat, lng})} 
+                                    />
+                                </Suspense>
+                            )}
+                         </ClientOnly>
+                         <input type="hidden" name="dropoffLat" value={dropoffCoords?.lat || ""} />
+                         <input type="hidden" name="dropoffLng" value={dropoffCoords?.lng || ""} />
+
+                         <label className="text-sm font-medium mt-2 block">Address Details</label>
+                         <Input name="dropoffAddress" placeholder="Building No, Street Name (for driver reference)" required />
                     </div>
                 )}
             </CardContent>

@@ -166,6 +166,7 @@ model DriverJob {
 model Route {
   id    String @id @default(uuid())
   name  String 
+  path  Json?  // Array of {lat, lng} objects representing the full polyline path
 
   vanDriverId String?
   vanDriver   User?   @relation(fields: [vanDriverId], references: [id])
