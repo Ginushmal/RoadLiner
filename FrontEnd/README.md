@@ -1,87 +1,93 @@
-# Welcome to React Router!
+# RoadLiner - Frontend Application
 
-A modern, production-ready template for building full-stack React applications using React Router.
+RoadLiner is a technology-enabled city-to-city logistics system designed to move small parcels across Sri Lanka effectively. This directory contains the frontend application built with React Router 7.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+## 🛠 Tech Stack
 
-## Features
+- **Framework**: [React Router 7](https://reactrouter.com/)
+- **Runtime & Package Manager**: [Bun](https://bun.sh/)
+- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
+- **Database ORM**: [Prisma v7](https://www.prisma.io/)
+- **Language**: TypeScript
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+## 🚀 Getting Started
 
-## Getting Started
+### 1. Prerequisites
 
-### Installation
+- **Bun**: Ensure Bun is installed (`powershell -c "irm bun.sh/install.ps1 | iex"` on Windows).
+- **Docker**: For running the PostgreSQL database.
 
-Install the dependencies:
+### 2. Setup
+
+1.  **Install dependencies**:
+    ```bash
+    bun install
+    ```
+
+2.  **Environment Variables**:
+    Copy `.env.example` to `.env` and update the `DATABASE_URL` if necessary.
+    ```bash
+    cp .env.example .env
+    ```
+
+3.  **Database Migration**:
+    Ensure your database is running (e.g., via Docker Compose in the root) and run migrations:
+    ```bash
+    bun x prisma migrate dev
+    ```
+
+### 3. Development
+
+#### Option A: Running with Docker (Recommended)
+From the **root directory**, run:
+```bash
+docker compose up -d
+```
+This starts the PostgreSQL database, pgAdmin, and the Frontend application.
+- **Frontend**: `http://localhost:3000`
+- **pgAdmin**: `http://localhost:5050`
+
+#### Option B: Running Locally with Bun
+1.  **Start Database**: Ensure you have a running PostgreSQL instance (or use the one from `docker compose`).
+2.  **Run Dev Server**:
+    ```bash
+    bun run dev
+    ```
+    The app will be available at `http://localhost:5173`.
+
+### 4. Production Build
 
 ```bash
-npm install
+bun run build
+bun run start
 ```
 
-### Development
+## 🗄️ Database Management
 
-Start the development server with HMR:
+Prisma is configured to generate the client into `app/generated/prisma`.
 
-```bash
-npm run dev
-```
+- **Update Schema**: Edit `prisma/schema.prisma`.
+- **Apply Changes**: `bun x prisma migrate dev --name <name>`
+- **Prisma Studio**: `bun x prisma studio`
 
-Your application will be available at `http://localhost:5173`.
+## 📁 Project Structure
 
-## Building for Production
+- `app/`: Application source code.
+  - `routes/`: Page components and routing logic.
+  - `db.server.ts`: Prisma client initialization.
+  - `generated/prisma/`: Generated Prisma client.
+- `prisma/`: Database schema and migrations.
+- `public/`: Static assets.
 
-Create a production build:
+## 📦 Business Context
 
-```bash
-npm run build
-```
+RoadLiner operates a van network on fixed routes across Sri Lanka, integrating Smart Parcel Stations and crowdsourced drivers for first/last-mile delivery.
 
-## Deployment
-
-### Docker Deployment
-
-To build and run using Docker:
-
-```bash
-docker build -t my-app .
-
-# Run the container
-docker run -p 3000:3000 my-app
-```
-
-The containerized application can be deployed to any platform that supports Docker, including:
-
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
-
-### DIY Deployment
-
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
-
-Make sure to deploy the output of `npm run build`
-
-```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
-```
-
-## Styling
-
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
+Key Workflows:
+- **Sender Flow**: Parcel details, pickup selection (Station/Home/On-Route), payment.
+- **Receiver Flow**: Notification, tracking, QR code verification.
+- **Driver Flow**: Job board for home pickup/delivery.
+- **Van Flow**: Route management and stop-based parcel handling.
 
 ---
-
-Built with ❤️ using React Router.
+Built with ❤️ for RoadLiner.
