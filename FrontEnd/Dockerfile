@@ -20,6 +20,8 @@ RUN bun run build
 # Production image
 FROM base
 COPY --from=deps /app/node_modules /app/node_modules
+# Copy generated Prisma Client (which usually lives inside node_modules)
+COPY --from=build /app/node_modules/.prisma /app/node_modules/.prisma
 COPY --from=build /app/build /app/build
 COPY --from=build /app/public /app/public
 COPY --from=build /app/package.json /app/package.json

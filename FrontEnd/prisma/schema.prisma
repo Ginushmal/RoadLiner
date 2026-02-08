@@ -2,197 +2,196 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../app/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "postgresql"
 }
 
 // --- ENUMS ---
 
 enum UserRole {
-  SENDER_RECEIVER
-  CROWD_DRIVER
-  VAN_DRIVER
-  ADMIN
+  SENDER_RECEIVER
+  CROWD_DRIVER
+  VAN_DRIVER
+  ADMIN
 }
 
 enum ParcelSize {
-  SMALL
-  MEDIUM
-  LARGE
+  SMALL
+  MEDIUM
+  LARGE
 }
 
 enum ParcelStatus {
-  PENDING           // Created, waiting for payment/pickup
-  ACCEPTED          // Driver accepted (for home pickup)
-  PICKED_UP         // Driver picked up (first mile)
-  AT_STATION_ORIGIN // At the starting parcel station
-  IN_TRANSIT        // On the RoadLiner Van
-  AT_STATION_DEST   // At the destination parcel station
-  OUT_FOR_DELIVERY  // Driver picked up (last mile)
-  READY_FOR_PICKUP  // Ready at station (for self pickup)
-  DELIVERED         // Completed
-  CANCELLED
+  PENDING             // Created, waiting for payment/pickup
+  ACCEPTED            // Driver accepted (for home pickup)
+  PICKED_UP           // Driver picked up (first mile)
+  AT_STATION_ORIGIN   // At the starting parcel station
+  IN_TRANSIT          // On the RoadLiner Van
+  AT_STATION_DEST     // At the destination parcel station
+  OUT_FOR_DELIVERY    // Driver picked up (last mile)
+  READY_FOR_PICKUP    // Ready at station (for self pickup)
+  DELIVERED           // Completed
+  CANCELLED
 }
 
 enum JobType {
-  FIRST_MILE // Sender Home -> Station
-  LAST_MILE  // Station -> Receiver Home
+  FIRST_MILE // Sender Home -> Station
+  LAST_MILE  // Station -> Receiver Home
 }
 
 enum JobStatus {
-  AVAILABLE
-  ACCEPTED
-  PICKED_UP
-  COMPLETED
-  CANCELLED
+  AVAILABLE
+  ACCEPTED
+  PICKED_UP
+  COMPLETED
+  CANCELLED
 }
 
 enum DeliveryMethod {
-  STATION
-  HOME
-  ON_ROUTE
+  STATION
+  HOME
+  ON_ROUTE
 }
 
 // --- MODELS ---
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String   // In a real app, hash this!
-  name      String
-  role      UserRole @default(SENDER_RECEIVER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // In a real app, hash this!
+  name      String
+  role      UserRole @default(SENDER_RECEIVER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Relationships
-  sentParcels     Parcel[]    @relation("Sender")
-  receivedParcels Parcel[]    @relation("Receiver")
-  driverJobs      DriverJob[] // For crowd drivers
-  drivenRoutes    Route[]     // For van drivers
+  // Relationships
+  sentParcels     Parcel[]     @relation("Sender")
+  receivedParcels Parcel[]     @relation("Receiver")
+  driverJobs      DriverJob[] // For crowd drivers
+  drivenRoutes    Route[]      // For van drivers
 }
 
 model Station {
-  id        String   @id @default(uuid())
-  name      String
-  city      String
-  
-  // Location Data
-  latitude      Float
-  longitude     Float
-  address       String?
-  googlePlaceId String?
+  id        String   @id @default(uuid())
+  name      String
+  city      String
+  
+  // Location Data
+  latitude      Float
+  longitude     Float
+  address       String?
+  googlePlaceId String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Relationships
-  parcelsOrigin      Parcel[]    @relation("OriginStation")
-  parcelsDestination Parcel[]    @relation("DestinationStation")
-  routeStops         RouteStop[]
+  // Relationships
+  parcelsOrigin      Parcel[]     @relation("OriginStation")
+  parcelsDestination Parcel[]     @relation("DestinationStation")
+  routeStops         RouteStop[]
 }
 
 model Parcel {
-  id         String @id @default(uuid())
-  trackingId String @unique // Visible to user
+  id          String @id @default(uuid())
+  trackingId  String @unique // Visible to user
 
-  // Dimensions
-  size   ParcelSize
-  weight Float      // kg
-  description String?
+  // Dimensions
+  size   ParcelSize
+  weight Float      // kg
+  description String?
 
-  // People
-  senderId             String
-  sender               User    @relation("Sender", fields: [senderId], references: [id])
-  
-  receiverId           String? // Nullable if guest
-  receiver             User?   @relation("Receiver", fields: [receiverId], references: [id])
-  guestReceiverName    String?
-  guestReceiverEmail   String?
-  guestReceiverPhone   String?
+  // People
+  senderId              String
+  sender                User     @relation("Sender", fields: [senderId], references: [id])
+  
+  receiverId            String? // Nullable if guest
+  receiver              User?   @relation("Receiver", fields: [receiverId], references: [id])
+  guestReceiverName     String?
+  guestReceiverEmail    String?
+  guestReceiverPhone    String?
 
-  // Logistics: Pickup (First Mile)
-  pickupMethod    DeliveryMethod
-  pickupAddress   String?
-  pickupPlaceId   String?
-  pickupLat       Float?
-  pickupLng       Float?
-  originStationId String?
-  originStation   Station? @relation("OriginStation", fields: [originStationId], references: [id])
+  // Logistics: Pickup (First Mile)
+  pickupMethod     DeliveryMethod
+  pickupAddress    String?
+  pickupPlaceId    String?
+  pickupLat        Float?
+  pickupLng        Float?
+  originStationId  String?
+  originStation    Station? @relation("OriginStation", fields: [originStationId], references: [id])
 
-  // Logistics: Dropoff (Last Mile)
-  dropoffMethod        DeliveryMethod
-  dropoffAddress       String?
-  dropoffPlaceId       String?
-  dropoffLat           Float?
-  dropoffLng           Float?
-  destinationStationId String?
-  destinationStation   Station? @relation("DestinationStation", fields: [destinationStationId], references: [id])
+  // Logistics: Dropoff (Last Mile)
+  dropoffMethod        DeliveryMethod
+  dropoffAddress       String?
+  dropoffPlaceId       String?
+  dropoffLat           Float?
+  dropoffLng           Float?
+  destinationStationId String?
+  destinationStation   Station? @relation("DestinationStation", fields: [destinationStationId], references: [id])
 
-  // Status & Metadata
-  status    ParcelStatus @default(PENDING)
-  qrCode    String?      // The content of the QR code
-  price     Float
-  isPaid    Boolean      @default(false)
+  // Status & Metadata
+  status    ParcelStatus @default(PENDING)
+  qrCode    String?      // The content of the QR code
+  price     Float
+  isPaid    Boolean      @default(false)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Relationships
-  driverJobs DriverJob[]
+  // Relationships
+  driverJobs DriverJob[]
 }
 
 model DriverJob {
-  id String @id @default(uuid())
+  id String @id @default(uuid())
 
-  driverId String?
-  driver   User?   @relation(fields: [driverId], references: [id])
+  driverId String?
+  driver   User?   @relation(fields: [driverId], references: [id])
 
-  parcelId String
-  parcel   Parcel @relation(fields: [parcelId], references: [id])
+  parcelId String
+  parcel   Parcel @relation(fields: [parcelId], references: [id])
 
-  type   JobType
-  status JobStatus @default(AVAILABLE)
+  type    JobType
+  status  JobStatus @default(AVAILABLE)
 
-  acceptedAt  DateTime?
-  completedAt DateTime?
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  acceptedAt  DateTime?
+  completedAt DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Route {
-  id   String @id @default(uuid())
-  name String 
+  id    String @id @default(uuid())
+  name  String 
 
-  vanDriverId String?
-  vanDriver   User?   @relation(fields: [vanDriverId], references: [id])
+  vanDriverId String?
+  vanDriver   User?   @relation(fields: [vanDriverId], references: [id])
 
-  stops RouteStop[]
+  stops RouteStop[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model RouteStop {
-  id String @id @default(uuid())
-  
-  routeId String
-  route   Route  @relation(fields: [routeId], references: [id])
+  id String @id @default(uuid())
+  
+  routeId String
+  route   Route  @relation(fields: [routeId], references: [id])
 
-  stationId String?
-  station   Station? @relation(fields: [stationId], references: [id])
-  
-  sequenceOrder Int // 1, 2, 3...
-  
-  // If not a station stop (e.g. key point on road)
-  latitude  Float?
-  longitude Float?
-  address   String?
+  stationId String?
+  station   Station? @relation(fields: [stationId], references: [id])
+  
+  sequenceOrder Int // 1, 2, 3...
+  
+  // If not a station stop (e.g. key point on road)
+  latitude  Float?
+  longitude Float?
+  address   String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
