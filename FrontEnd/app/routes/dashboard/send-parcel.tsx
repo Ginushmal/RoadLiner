@@ -140,6 +140,15 @@ export default function SendParcel() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
+  const hardcodedStations = [
+    { id: "Station-Colombo", name: "Station-Colombo" },
+    { id: "Station-Moratuwa", name: "Station-Moratuwa" },
+    { id: "Station-Kalutara", name: "Station-Kalutara" },
+    { id: "Station-Hikkaduwa", name: "Station-Hikkaduwa" },
+    { id: "Station-Galle", name: "Station-Galle" },
+    { id: "Station-Matara", name: "Station-Matara" },
+  ];
+
   const [pickupMethod, setPickupMethod] = useState<DeliveryMethod>("STATION");
   const [dropoffMethod, setDropoffMethod] = useState<DeliveryMethod>("STATION");
   const [pickupCoords, setPickupCoords] = useState<{lat: number, lng: number} | null>(null);
@@ -202,7 +211,7 @@ export default function SendParcel() {
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Select Origin Station</label>
                         <select name="originStationId" className="w-full flex h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm shadow-sm">
-                            {stations.map(s => <option key={s.id} value={s.id}>{s.name} ({s.city})</option>)}
+                            {hardcodedStations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                     </div>
                 )}
@@ -253,7 +262,7 @@ export default function SendParcel() {
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Select Destination Station</label>
                         <select name="destinationStationId" className="w-full flex h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm shadow-sm">
-                            {stations.map(s => <option key={s.id} value={s.id}>{s.name} ({s.city})</option>)}
+                            {hardcodedStations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                     </div>
                 )}

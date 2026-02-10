@@ -139,7 +139,7 @@ If this is your first time running the project (or after resetting docker), run 
 
 ```bash
 cd FrontEnd
-bun x prisma migrate devbun
+
 
 ```
 
