@@ -148,10 +148,7 @@ If this is your first time running the project (or after resetting docker), run 
 ```bash
 cd FrontEnd
 # Reset database (clears all data)
-$env:DATABASE_URL="postgresql://user:password@localhost:5433/mydb?schema=public"; bun x prisma migrate reset --force
-
-# Apply migrations and seed data
-$env:DATABASE_URL="postgresql://user:password@localhost:5433/mydb?schema=public"; bun x prisma migrate dev
+bun x prisma migrate reset --force
 
 # Run seed manually (if needed)
 bun x prisma db seed
