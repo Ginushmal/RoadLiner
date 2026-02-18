@@ -1,11 +1,11 @@
-import { type LoaderFunctionArgs, Link, useLoaderData } from "react-router";
+import { type LoaderFunctionArgs, type ActionFunctionArgs, Link, useLoaderData, Form, useActionData } from "react-router";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { requireRole } from "~/auth.server";
 import { prisma } from "~/db.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  await requireRole(request, ["ADMIN"]);
+  const user = await requireRole(request, ["ADMIN"]);
   
   const routes = await prisma.route.findMany({
       include: { 
@@ -17,25 +17,73 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
   });
 
-  const stations = await prisma.station.findMany();
+  const stations = await prisma.station.findMany({
+    orderBy: { name: 'asc' }
+  });
 
   return { routes, stations };
 }
 
+export async function action({ request }: ActionFunctionArgs) {
+  const user = await requireRole(request, ["ADMIN"]);
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+  const id = formData.get("id") as string;
+
+  if (intent === "delete_route") {
+    // Delete stops first (cascade manually just in case, though schema might handle it)
+    await prisma.routeStop.deleteMany({ where: { routeId: id } });
+    // Delete trips history
+    await prisma.trip.deleteMany({ where: { routeId: id } });
+    // Delete route
+    await prisma.route.delete({ where: { id } });
+    return { success: true, message: "Route deleted successfully." };
+  }
+
+  if (intent === "delete_station") {
+    // Check dependencies
+    const stopsCount = await prisma.routeStop.count({ where: { stationId: id } });
+    const parcelsOrigin = await prisma.parcel.count({ where: { originStationId: id } });
+    const parcelsDest = await prisma.parcel.count({ where: { destinationStationId: id } });
+
+    if (stopsCount > 0) {
+      return { error: "Cannot delete station: It is part of one or more routes." };
+    }
+    if (parcelsOrigin > 0 || parcelsDest > 0) {
+      return { error: "Cannot delete station: There are parcels associated with it." };
+    }
+
+    await prisma.station.delete({ where: { id } });
+    return { success: true, message: "Station deleted successfully." };
+  }
+
+  return null;
+}
+
 export default function AdminDashboard() {
   const { routes, stations } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+        <div>
+            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+            {actionData?.error && (
+                <p className="text-red-600 text-sm mt-1">{actionData.error}</p>
+            )}
+             {actionData?.message && (
+                <p className="text-green-600 text-sm mt-1">{actionData.message}</p>
+            )}
+        </div>
+        
         <div className="space-x-2">
-            <Link to="/admin/stations/new">
-                <Button variant="secondary">Add Station</Button>
-            </Link>
-            <Link to="/admin/routes/new">
-                <Button>Create New Route</Button>
-            </Link>
+            <Button variant="secondary" asChild>
+                <Link to="/admin/stations/new">Add Station</Link>
+            </Button>
+            <Button asChild>
+                <Link to="/admin/routes/new">Create New Route</Link>
+            </Button>
         </div>
       </div>
 
@@ -49,19 +97,27 @@ export default function AdminDashboard() {
                   {routes.length === 0 ? <p className="text-sm text-gray-500">No routes defined.</p> : (
                       <div className="space-y-4">
                           {routes.map(route => (
-                              <div key={route.id} className="border p-4 rounded-md">
-                                  <div className="flex justify-between items-start mb-2">
-                                      <h3 className="font-bold">{route.name}</h3>
-                                      <div className="flex flex-col items-end gap-2">
+                              <div key={route.id} className="border p-4 rounded-md space-y-3">
+                                  <div className="flex justify-between items-start">
+                                      <div>
+                                          <h3 className="font-bold">{route.name}</h3>
                                           <span className={`text-xs px-2 py-1 rounded ${route.vanDriver ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                                               {route.vanDriver ? `Driver: ${route.vanDriver.name}` : "No Driver Assigned"}
                                           </span>
-                                          <Link to={`/admin/routes/${route.id}/edit`}>
-                                              <Button variant="ghost" size="sm" className="h-7 text-xs">Edit Route</Button>
-                                          </Link>
+                                      </div>
+                                      <div className="flex gap-2">
+                                          <Button variant="ghost" size="sm" className="h-7 text-xs" asChild>
+                                              <Link to={`/admin/routes/${route.id}/edit`}>Edit</Link>
+                                          </Button>
+                                          <Form method="post" onSubmit={(e) => {
+                                              if (!confirm("Are you sure you want to delete this route?")) e.preventDefault();
+                                          }}>
+                                              <input type="hidden" name="id" value={route.id} />
+                                              <Button name="intent" value="delete_route" variant="destructive" size="sm" className="h-7 text-xs">Delete</Button>
+                                          </Form>
                                       </div>
                                   </div>
-                                  <div className="text-sm text-gray-600 mb-2">
+                                  <div className="text-sm text-gray-600">
                                       {route.stops.map((s, i) => (
                                           <span key={s.id}>
                                               {s.station?.name}
@@ -82,14 +138,27 @@ export default function AdminDashboard() {
                   <CardTitle>Stations</CardTitle>
               </CardHeader>
               <CardContent>
-                  <div className="space-y-2">
-                      {stations.map(station => (
-                          <div key={station.id} className="flex justify-between border-b pb-2 last:border-0">
-                              <span>{station.name}</span>
-                              <span className="text-gray-500 text-sm">{station.city}</span>
-                          </div>
-                      ))}
-                  </div>
+                  {stations.length === 0 ? <p className="text-sm text-gray-500">No stations defined.</p> : (
+                      <div className="space-y-2">
+                          {stations.map(station => (
+                              <div key={station.id} className="flex justify-between items-center border-b pb-2 last:border-0">
+                                  <div>
+                                      <span className="font-medium">{station.name}</span>
+                                      <span className="text-gray-500 text-sm ml-2">({station.city})</span>
+                                  </div>
+                                  <Form method="post" onSubmit={(e) => {
+                                      if (!confirm("Are you sure you want to delete this station?")) e.preventDefault();
+                                  }}>
+                                      <input type="hidden" name="id" value={station.id} />
+                                      <Button name="intent" value="delete_station" variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0">
+                                          <span className="sr-only">Delete</span>
+                                          🗑️
+                                      </Button>
+                                  </Form>
+                              </div>
+                          ))}
+                      </div>
+                  )}
               </CardContent>
           </Card>
       </div>
