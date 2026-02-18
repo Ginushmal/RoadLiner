@@ -102,10 +102,18 @@ export async function action({ request }: ActionFunctionArgs) {
       if (receiver) receiverId = receiver.id;
   }
 
+  // Validate weight
+  if (isNaN(weight)) {
+    return {
+      error: "Weight must be a valid number.",
+    };
+  }
+
   const trackingId = "RL-" + Math.random().toString(36).substr(2, 9).toUpperCase();
 
-  const parcel = await prisma.parcel.create({
-    data: {
+  try {
+    const parcel = await prisma.parcel.create({
+      data: {
         trackingId,
         size,
         weight,
@@ -129,25 +137,25 @@ export async function action({ request }: ActionFunctionArgs) {
         
         price,
         status: "PENDING"
-    }
-  });
+      }
+    });
 
-  return redirect(`/parcels/${parcel.id}`);
+    return redirect(`/parcels/${parcel.id}`);
+  } catch (error) {
+    console.error("Error creating parcel:", error);
+    return {
+      error: "Failed to create parcel. Please try again.",
+    };
+  }
 }
 
 export default function SendParcel() {
   const { stations } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
+  const actionData = useActionData<typeof action>();
   const isSubmitting = navigation.state === "submitting";
 
-  const hardcodedStations = [
-    { id: "Station-Colombo", name: "Station-Colombo" },
-    { id: "Station-Moratuwa", name: "Station-Moratuwa" },
-    { id: "Station-Kalutara", name: "Station-Kalutara" },
-    { id: "Station-Hikkaduwa", name: "Station-Hikkaduwa" },
-    { id: "Station-Galle", name: "Station-Galle" },
-    { id: "Station-Matara", name: "Station-Matara" },
-  ];
+
 
   const [pickupMethod, setPickupMethod] = useState<DeliveryMethod>("STATION");
   const [dropoffMethod, setDropoffMethod] = useState<DeliveryMethod>("STATION");
@@ -160,6 +168,13 @@ export default function SendParcel() {
         <h1 className="text-3xl font-bold">Send a Parcel</h1>
         <p className="text-gray-500">Fill in the details to schedule your shipment.</p>
       </div>
+      
+      {actionData?.error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <strong className="font-bold">Error:</strong>
+          <span className="block sm:inline"> {actionData.error}</span>
+        </div>
+      )}
       
       <Form method="post" className="space-y-6">
         <Card>
@@ -211,7 +226,7 @@ export default function SendParcel() {
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Select Origin Station</label>
                         <select name="originStationId" className="w-full flex h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm shadow-sm">
-                            {hardcodedStations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            {stations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                     </div>
                 )}
@@ -262,7 +277,7 @@ export default function SendParcel() {
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Select Destination Station</label>
                         <select name="destinationStationId" className="w-full flex h-9 rounded-md border border-gray-200 bg-white px-3 py-1 text-sm shadow-sm">
-                            {hardcodedStations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            {stations.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                     </div>
                 )}
