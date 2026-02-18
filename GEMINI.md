@@ -48,20 +48,26 @@ This project is built using the following modern web technologies. All developme
 **All future implementations MUST strictly follow these rules:**
 
 ### 1. Code Style & Architecture
-*   **Imports**: NEVER import server-side modules (like `db.server.ts` or Prisma types directly from the generated folder) into client-side components.
-    *   Use `import type { UserRole } from "@prisma/client"` for types.
-    *   Keep database logic strictly within `loader` and `action` functions.
-*   **Maps & Leaflet**: Leaflet requires the `window` object. Always wrap map components in `ClientOnly` (from `remix-utils/client-only`) and `Suspense` to prevent Server-Side Rendering (SSR) crashes.
-    *   Example:
-        ```tsx
-        <ClientOnly fallback={<Fallback />}>
-          {() => <Suspense fallback={<Fallback />}><MapComponent /></Suspense>}
-        </ClientOnly>
-        ```
-*   **UI Components**: Use the pre-built components in `app/components/ui` (`Button`, `Card`, `Input`, `ProximityButton`) to maintain visual consistency.
-*   **Mobile-First**: Ensure all buttons and inputs have appropriate touch targets (min 44px height) and that layouts stack vertically on small screens.
+
+- **Imports**: NEVER import server-side modules (like `db.server.ts` or Prisma types directly from the generated folder) into client-side components.
+  - Use `import type { UserRole } from "@prisma/client"` for types.
+  - Keep database logic strictly within `loader` and `action` functions.
+- **Maps & Leaflet**: Leaflet requires the `window` object. Always wrap map components in `ClientOnly` (from `remix-utils/client-only`) and `Suspense` to prevent Server-Side Rendering (SSR) crashes.
+  - Example:
+    ```tsx
+    <ClientOnly fallback={<Fallback />}>
+      {() => (
+        <Suspense fallback={<Fallback />}>
+          <MapComponent />
+        </Suspense>
+      )}
+    </ClientOnly>
+    ```
+- **UI Components**: Use the pre-built components in `app/components/ui` (`Button`, `Card`, `Input`, `ProximityButton`) to maintain visual consistency.
+- **Mobile-First**: Ensure all buttons and inputs have appropriate touch targets (min 44px height) and that layouts stack vertically on small screens.
 
 ### 2. Mandatory Workflow: Verify & Fix
+
 To ensure the system remains stable, you **MUST** follow this sequence after **EVERY** code modification request:
 
 1.  **Implement**: Write the code changes.
@@ -76,14 +82,16 @@ To ensure the system remains stable, you **MUST** follow this sequence after **E
 4.  **Fix Errors**: If the build fails or the server crashes (e.g., "Prisma Client not found", "window is not defined"), you must **fix it immediately** before marking the task as complete. Do not wait for the user to report it.
 
 ### 3. Admin & Security
-*   **Admin Access**: The Admin Panel (`/admin`) is restricted. Do not allow public registration for the `ADMIN` role.
-*   **Credentials**: The seeded admin account is `admin@gmail.com` / `admin`.
-*   **Route Management**: Routes are defined by Admin users via the drag-and-drop interface.
+
+- **Admin Access**: The Admin Panel (`/admin`) is restricted. Do not allow public registration for the `ADMIN` role.
+- **Credentials**: The seeded admin account is `admin@gmail.com` / `admin`.
+- **Route Management**: Routes are defined by Admin users via the drag-and-drop interface.
 
 ### 4. Proximity & Verification
-*   **Location**: The system uses GPS to verify physical presence.
-*   **DEV GPS**: For testing, use the floating "DEV GPS" panel (bottom-right) to mock your location.
-*   **Threshold**: Actions like "Confirm Pickup" or "Unload" are blocked if the user is >500m away from the target.
+
+- **Location**: The system uses GPS to verify physical presence.
+- **DEV GPS**: For testing, use the floating "DEV GPS" panel (bottom-right) to mock your location.
+- **Threshold**: Actions like "Confirm Pickup" or "Unload" are blocked if the user is >500m away from the target.
 
 ---
 
@@ -139,11 +147,35 @@ If this is your first time running the project (or after resetting docker), run 
 
 ```bash
 cd FrontEnd
+# Reset database (clears all data)
+$env:DATABASE_URL="postgresql://user:password@localhost:5433/mydb?schema=public"; bun x prisma migrate reset --force
 
+# Apply migrations and seed data
+$env:DATABASE_URL="postgresql://user:password@localhost:5433/mydb?schema=public"; bun x prisma migrate dev
 
+# Run seed manually (if needed)
+bun x prisma db seed
 ```
 
 _(This command requires the database to be running first)_
+
+### 6. Seeding Configuration
+
+If the seed command fails, ensure your `FrontEnd/prisma.config.ts` includes the seed command configuration:
+
+```ts
+import "dotenv/config";
+import { defineConfig } from "@prisma/config";
+
+export default defineConfig({
+  datasource: {
+    url: process.env.DATABASE_URL,
+  },
+  migrations: {
+    seed: "bun prisma/seed.ts",
+  },
+});
+```
 
 ---
 
