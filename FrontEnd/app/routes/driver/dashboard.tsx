@@ -1,4 +1,4 @@
-import { type LoaderFunctionArgs, type ActionFunctionArgs, useLoaderData, Form, useNavigation, useSubmit } from "react-router";
+import { type LoaderFunctionArgs, type ActionFunctionArgs, useLoaderData, Form, useNavigation, useSubmit, Link } from "react-router";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { requireRole } from "~/auth.server";
@@ -66,9 +66,14 @@ export default function DriverDashboard() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">My Active Tasks</h1>
-        <p className="text-gray-500">Manage your current pickups and deliveries.</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">My Active Tasks</h1>
+          <p className="text-gray-500">Manage your current pickups and deliveries.</p>
+        </div>
+        <Button asChild variant="outline">
+          <Link to="/driver/history">History</Link>
+        </Button>
       </div>
 
       {/* Active Jobs */}

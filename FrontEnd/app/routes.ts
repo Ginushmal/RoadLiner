@@ -15,10 +15,12 @@ export default [
   layout("routes/layouts/driver-layout.tsx", [
     route("driver", "routes/driver/dashboard.tsx"),
     route("driver/jobs", "routes/driver/jobs.tsx"),
+    route("driver/history", "routes/driver/history.tsx"),
   ]),
 
    layout("routes/layouts/van-layout.tsx", [
     route("van", "routes/van/dashboard.tsx"),
+    route("van/history", "routes/van/history.tsx"),
   ]),
 
   layout("routes/layouts/admin-layout.tsx", [

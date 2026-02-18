@@ -72,6 +72,19 @@ model User {
   receivedParcels Parcel[]     @relation("Receiver")
   driverJobs      DriverJob[] // For crowd drivers
   drivenRoutes    Route[]      // For van drivers
+  trips           Trip[]       // History of driven routes
+}
+
+model Trip {
+  id        String   @id @default(uuid())
+  driverId  String
+  driver    User     @relation(fields: [driverId], references: [id])
+  routeId   String
+  route     Route    @relation(fields: [routeId], references: [id])
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Station {
@@ -172,6 +185,7 @@ model Route {
   vanDriver   User?   @relation(fields: [vanDriverId], references: [id])
 
   stops RouteStop[]
+  trips Trip[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
