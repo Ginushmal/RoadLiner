@@ -16,6 +16,7 @@ import "./app.css";
 const DevLocationPanel = lazy(() => import("./components/ui/dev-location-panel"));
 
 export const links: Route.LinksFunction = () => [
+  { rel: "icon", type: "image/png", href: "/my-logo_favicon.png" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
     rel: "preconnect",

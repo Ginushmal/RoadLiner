@@ -14,7 +14,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 
   if (!parcel) throw new Response("Not Found", { status: 404 });
-  return { parcel, userId };
+
+  // Determine base URL dynamically
+  const url = new URL(request.url);
+  const host = request.headers.get("X-Forwarded-Host") || url.host;
+  const proto = request.headers.get("X-Forwarded-Proto") || (url.protocol.replace(":", ""));
+  const baseUrl = process.env.BASE_URL || `${proto}://${host}`;
+
+  return { parcel, userId, baseUrl };
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -41,16 +48,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 export default function ParcelDetail() {
-  const { parcel, userId } = useLoaderData<typeof loader>();
+  const { parcel, userId, baseUrl } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isPaying = navigation.state === "submitting" && navigation.formData?.get("intent") === "pay";
   const [copied, setCopied] = useState(false);
 
   const isReceiver = parcel.receiverId === userId;
 
-  const trackingUrl = typeof window !== "undefined" 
-    ? `${window.location.origin}/track/${parcel.trackingId}` 
-    : "";
+  const trackingUrl = `${baseUrl}/track/${parcel.trackingId}`;
 
   const copyToClipboard = () => {
     if (typeof navigator !== "undefined") {

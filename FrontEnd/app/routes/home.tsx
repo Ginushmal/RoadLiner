@@ -5,7 +5,8 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen">
       <header className="px-4 lg:px-6 h-14 flex items-center border-b">
-        <Link to="/" className="flex items-center justify-center">
+        <Link to="/" className="flex items-center justify-center gap-2">
+           <img src="/my-logo.png" alt="RoadLiner Logo" className="h-6 w-auto" />
           <span className="font-bold text-xl">RoadLiner</span>
         </Link>
         <nav className="ml-auto flex gap-4 sm:gap-6">
@@ -21,6 +22,7 @@ export default function Home() {
         <section className="w-full py-12 md:py-24 lg:py-32 xl:py-48 bg-gray-50 dark:bg-gray-900">
           <div className="container px-4 md:px-6">
             <div className="flex flex-col items-center space-y-4 text-center">
+              <img src="/my-logo.png" alt="RoadLiner Logo" className="h-36 w-auto mb-4" />
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl lg:text-6xl/none">
                   Smart City-to-City Logistics

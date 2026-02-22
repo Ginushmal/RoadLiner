@@ -41,7 +41,12 @@ export default function Register() {
   const defaultRole = searchParams.get("role") === "driver" ? "CROWD_DRIVER" : "SENDER_RECEIVER";
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
+      <Link to="/" className="mb-8 flex flex-col items-center gap-2">
+        <img src="/my-logo.png" alt="RoadLiner Logo" className="h-12 w-auto" />
+        <span className="font-bold text-2xl text-gray-900 tracking-tight">RoadLiner</span>
+      </Link>
+
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl text-center">Create an Account</CardTitle>
@@ -53,20 +58,20 @@ export default function Register() {
               <Input id="name" name="name" type="text" required placeholder="John Doe" />
             </div>
             <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium">Email</label>
+              <label htmlFor="email" className="text-sm font-medium text-gray-700">Email</label>
               <Input id="email" name="email" type="email" required placeholder="user@example.com" />
             </div>
             <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium">Password</label>
+              <label htmlFor="password" className="text-sm font-medium text-gray-700">Password</label>
               <Input id="password" name="password" type="password" required />
             </div>
              <div className="space-y-2">
-              <label htmlFor="role" className="text-sm font-medium">I want to...</label>
+              <label htmlFor="role" className="text-sm font-medium text-gray-700">I want to...</label>
               <select 
                 name="role" 
                 id="role"
                 defaultValue={defaultRole}
-                className="flex h-9 w-full rounded-md border border-gray-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-950"
+                className="flex h-9 w-full rounded-md border border-gray-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-950"
               >
                 <option value="SENDER_RECEIVER">Send & Receive Parcels</option>
                 <option value="CROWD_DRIVER">Drive & Earn</option>
