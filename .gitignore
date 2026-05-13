@@ -36,3 +36,6 @@ override.tf.json
 .terraformrc
 terraform.rc
 /.lh
+
+.vercel
+.env*.local
